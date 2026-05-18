@@ -1,0 +1,367 @@
+// ═══════════════════════════════════════════════════════
+//  MoodTunes player.js  (v5 — YouTube API Key Search Fix)
+//  Paste your YouTube Data API key below ↓
+// ═══════════════════════════════════════════════════════
+
+const YT_DATA_API_KEY = 'PASTE_YOUR_YOUTUBE_API_KEY_HERE';
+// Get key: console.cloud.google.com → APIs → YouTube Data API v3 → Credentials
+
+let ytPlayer  = null;
+let ytReady   = false;
+let queue     = [];
+let curIdx    = 0;
+let isPlaying = false;
+let isShuffle = false;
+let isRepeat  = false;
+let progTimer = null;
+const triedIds = {};  // songId → [tried videoIds]
+
+// ── YouTube IFrame API Ready ──────────────────────────
+function onYouTubeIframeAPIReady() {
+  console.log('✅ YT IFrame API loaded');
+  ytPlayer = new YT.Player('yt', {
+    width: '480', height: '270', videoId: '',
+    playerVars: {
+      autoplay: 1, controls: 0, disablekb: 1, fs: 0,
+      iv_load_policy: 3, modestbranding: 1, rel: 0,
+      enablejsapi: 1, playsinline: 1,
+      origin: window.location.origin
+    },
+    events: {
+      onReady:       onPlayerReady,
+      onStateChange: onStateChange,
+      onError:       onError
+    }
+  });
+}
+
+function onPlayerReady(e) {
+  ytReady = true;
+  e.target.setVolume(80);
+  e.target.unMute();
+  console.log('✅ Player ready');
+  initQueue();
+}
+
+function onStateChange(e) {
+  const S = YT.PlayerState;
+  if (e.data === S.PLAYING)   { setUI(true);  startProg(); }
+  if (e.data === S.PAUSED)    { setUI(false); stopProg(); }
+  if (e.data === S.BUFFERING) { document.getElementById('playBtn').textContent = '⏳'; }
+  if (e.data === S.ENDED)     { stopProg(); isRepeat ? (ytPlayer.seekTo(0), ytPlayer.playVideo()) : nextSong(); }
+}
+
+// ── The Core Fix: Auto-Search Embeddable Alternative ─────
+async function onError(e) {
+  console.warn('YT Error code:', e.data);
+  const song = queue[curIdx];
+  if (!song) return;
+
+  // 100 = not found, 101/150 = embedding not allowed
+  if (e.data === 100 || e.data === 101 || e.data === 150) {
+    showErr(`Finding embeddable version of "${song.title}"...`);
+    const alt = await findEmbeddableVideo(song.title, song.artist, song.id);
+    if (alt) {
+      console.log('✅ Embeddable alt found:', alt);
+      // Store working ID back to queue
+      queue[curIdx].youtubeId = alt;
+      ytPlayer.loadVideoById(alt);
+    } else {
+      showErr(`"${song.title}" unavailable — skipping`);
+      setTimeout(nextSong, 2000);
+    }
+  } else {
+    showErr('Error ' + e.data + ' — skipping');
+    setTimeout(nextSong, 2000);
+  }
+}
+
+// ── Search YouTube API for embeddable video ───────────────
+async function findEmbeddableVideo(title, artist, songId) {
+  if (!triedIds[songId]) triedIds[songId] = [queue[curIdx]?.youtubeId];
+
+  const key = YT_DATA_API_KEY;
+  const hasKey = key && key !== 'PASTE_YOUR_YOUTUBE_API_KEY_HERE' && key.length > 10;
+
+  // Strategy 1: YouTube Data API search (needs API key)
+  if (hasKey) {
+    const queries = [
+      `${title} ${artist} official audio`,
+      `${title} ${artist} lyrics`,
+      `${title} ${artist} topic`,
+      `${title} ${artist}`,
+    ];
+
+    for (const q of queries) {
+      try {
+        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&videoEmbeddable=true&key=${key}&maxResults=10`;
+        const res  = await fetch(url);
+        const dat  = await res.json();
+
+        if (dat.error) { console.warn('YT API error:', dat.error.message); break; }
+
+        if (dat.items && dat.items.length) {
+          for (const item of dat.items) {
+            const vid = item.id?.videoId;
+            if (vid && !triedIds[songId].includes(vid)) {
+              triedIds[songId].push(vid);
+              console.log(`Found via API search "${q}":`, vid);
+              return vid;
+            }
+          }
+        }
+      } catch(err) { console.warn('API search failed:', err); break; }
+    }
+  } else {
+    console.warn('No YouTube API key — using hardcoded fallbacks only');
+    showErr('Add YouTube API key in player.js for better song finding!');
+  }
+
+  // Strategy 2: Hardcoded fallbacks (Topic channel IDs — usually embeddable)
+  const FALLBACKS = {
+    // HAPPY
+    'happy':                    ['ZbZSe6N_BXs','y6Sxv-sUYtM'],
+    'uptown funk':              ['OPf0YbXqDm0'],
+    'shake it off':             ['nfWlot6h_JM'],
+    'can\'t stop the feeling': ['ru0K8uYEZWw'],
+    'dynamite':                 ['gdZLi9oWNZg'],
+    'watermelon sugar':         ['E07s5ZYygMg'],
+    'sunflower':                ['ApXoWvfEYVU'],
+    'good as hell':             ['SmbmeOgGpnc'],
+    // SAD
+    'someone like you':         ['hLQl3WQQoQ0','_CDrEDfpBX8'],
+    'fix you':                  ['k4V3Mo61fJM','JbcgVFmTq_w'],
+    'let her go':               ['RBumgq5yVrA'],
+    'stay with me':             ['pB-5XG-DbAA'],
+    'drivers license':          ['ZmDBbnmKpiU'],
+    'tum hi ho':                ['Umqb9KENgmk','xKMNNFRBJBo'],
+    'liability':                ['sJqTnMIGP2s'],
+    // ENERGETIC
+    'lose yourself':            ['_Yhyp-_hX2s','Eg_-bEuyCko'],
+    'humble':                   ['tvTRZJ-4EyI'],
+    'levels':                   ['kl3bVPVVMDU'],
+    'titanium':                 ['JRfuAukYTKg'],
+    'believer':                 ['7wtfhZwyrcc'],
+    'thunder':                  ['fKopy74weus'],
+    'don\'t stop me now':       ['HgzGwKwLmgM'],
+    'radioactive':              ['ktvTqknDobU'],
+    // CALM
+    'weightless':               ['UfcAVejslrU'],
+    'river flows in you':       ['iVHdJYBDmtM'],
+    'sunset lover':             ['MaLEBVEoiQ8'],
+    'dreams':                   ['mrZRURcb1cM'],
+    // ROMANTIC
+    'perfect':                  ['2Vv-BfVoq4g'],
+    'all of me':                ['450p7goxZqg'],
+    'thinking out loud':        ['lp-EO5I60KA'],
+    'a thousand years':         ['rtOvBOTyX00'],
+    'make you feel my love':    ['L3KRDiMVEQA'],
+    'lover':                    ['AqAJLh9wuZ0'],
+    // ANGRY
+    'in the end':               ['eVTXPUF4Oz4'],
+    'numb':                     ['kXYiU_JCYtU'],
+    'crawling':                 ['Gd9OhYroLN0'],
+    'monster':                  ['CcCT4HnYKEU'],
+    // FOCUS
+    'experience':               ['hN_q-_nGv4U'],
+    'clair de lune':            ['WNcsUNKnbDQ'],
+    'gymnopédie':               ['S-Xm7s9eGxU'],
+    'comptine':                 ['ePHPaIHKhVQ'],
+  };
+
+  const tLow = title.toLowerCase();
+  const key2 = Object.keys(FALLBACKS).find(k => tLow.includes(k));
+  if (key2) {
+    const unused = FALLBACKS[key2].filter(id => !triedIds[songId].includes(id));
+    if (unused.length) { triedIds[songId].push(unused[0]); return unused[0]; }
+  }
+
+  return null;
+}
+
+// ── Init Queue ────────────────────────────────────────
+async function initQueue() {
+  const stored = localStorage.getItem('moodtunes_queue');
+  const cur    = localStorage.getItem('moodtunes_current_song');
+  queue = stored ? JSON.parse(stored) : [];
+  if (!queue.length && cur) queue = [JSON.parse(cur)];
+  if (!queue.length) { await loadTrending(); return; }
+  if (cur) {
+    const c = JSON.parse(cur);
+    const i = queue.findIndex(s => s.id === c.id);
+    curIdx = i >= 0 ? i : 0;
+  }
+  renderQueue();
+  loadSong(curIdx, true);
+}
+
+async function loadTrending() {
+  try {
+    const res = await fetch('http://localhost:8080/api/songs/trending');
+    if (!res.ok) { showErr('Backend error — start Spring Boot in IntelliJ!'); return; }
+    const data = await res.json();
+    if (!data || !data.length) { showErr('No songs in DB — import data.sql in MySQL!'); return; }
+    queue = data; curIdx = 0;
+    localStorage.setItem('moodtunes_queue', JSON.stringify(queue));
+    renderQueue();
+    loadSong(0, true);
+  } catch {
+    showErr('Cannot reach backend on port 8080 — start Spring Boot!');
+    document.getElementById('songTitle').textContent  = '⚠️ Backend not running';
+    document.getElementById('songArtist').textContent = 'Start IntelliJ → Run MoodTunesApplication';
+  }
+}
+
+// ── Load Song ─────────────────────────────────────────
+function loadSong(idx, autoplay = true) {
+  if (!queue.length) return;
+  curIdx = Math.max(0, Math.min(idx, queue.length - 1));
+  const song = queue[curIdx];
+  console.log('▶', song.title, '|', song.youtubeId, '| autoplay:', autoplay);
+
+  document.getElementById('songTitle').textContent  = song.title;
+  document.getElementById('songArtist').textContent = song.artist;
+
+  const art = document.getElementById('albumArt');
+  art.src = `https://img.youtube.com/vi/${song.youtubeId}/maxresdefault.jpg`;
+  art.onerror = () => { art.src = `https://img.youtube.com/vi/${song.youtubeId}/mqdefault.jpg`; art.onerror = null; };
+
+  const MC = { HAPPY:'#FFD700',SAD:'#4A90E2',ENERGETIC:'#FF4500',CALM:'#7EC8E3',ROMANTIC:'#FF6B9D',ANGRY:'#DC143C',FOCUS:'#9B59B6' };
+  const ME = { HAPPY:'😊',SAD:'😢',ENERGETIC:'💪',CALM:'😌',ROMANTIC:'❤️',ANGRY:'😤',FOCUS:'🎯' };
+  const mc = MC[song.mood]||'#7c3aed', me = ME[song.mood]||'🎵';
+  document.getElementById('moodBadge').innerHTML =
+    `<span class="mbadge" style="background:${mc}22;color:${mc};border:1px solid ${mc}44;">${me} ${song.mood||''}</span>`;
+
+  document.getElementById('totTime').textContent  = fmt(song.duration||0);
+  document.getElementById('progFill').style.width = '0%';
+  document.getElementById('curTime').textContent  = '0:00';
+  renderQueue();
+  localStorage.setItem('moodtunes_current_song', JSON.stringify(song));
+
+  if (ytReady && ytPlayer && song.youtubeId) {
+    autoplay ? ytPlayer.loadVideoById(song.youtubeId) : ytPlayer.cueVideoById(song.youtubeId);
+  }
+
+  fetchLyrics(song.artist, song.title);
+  fetch(`http://localhost:8080/api/songs/${song.id}/play`, { method: 'POST' }).catch(() => {});
+}
+
+// ── Controls ──────────────────────────────────────────
+function togglePlay() {
+  if (!ytReady) { showErr('Player loading...'); return; }
+  ytPlayer.getPlayerState() === YT.PlayerState.PLAYING ? ytPlayer.pauseVideo() : ytPlayer.playVideo();
+}
+function nextSong() {
+  curIdx = isShuffle ? Math.floor(Math.random()*queue.length) : (curIdx+1)%queue.length;
+  loadSong(curIdx, true);
+}
+function prevSong() {
+  if (ytReady && ytPlayer.getCurrentTime && ytPlayer.getCurrentTime()>3) { ytPlayer.seekTo(0); return; }
+  curIdx = (curIdx-1+queue.length)%queue.length;
+  loadSong(curIdx, true);
+}
+function toggleShuffle() { isShuffle=!isShuffle; document.getElementById('shuffleBtn').classList.toggle('on',isShuffle); showToast(isShuffle?'🔀 Shuffle ON':'🔀 Shuffle OFF'); }
+function toggleRepeat()  { isRepeat=!isRepeat;   document.getElementById('repeatBtn').classList.toggle('on',isRepeat);   showToast(isRepeat?'🔁 Repeat ON':'🔁 Repeat OFF'); }
+function setVol(v) { if (ytReady) ytPlayer.setVolume(parseInt(v)); }
+
+// ── Progress ──────────────────────────────────────────
+function startProg() {
+  stopProg();
+  progTimer = setInterval(() => {
+    if (!ytReady || !ytPlayer.getCurrentTime) return;
+    const cur = ytPlayer.getCurrentTime()||0, dur = ytPlayer.getDuration()||1;
+    document.getElementById('progFill').style.width = `${(cur/dur)*100}%`;
+    document.getElementById('curTime').textContent  = fmt(Math.floor(cur));
+    document.getElementById('totTime').textContent  = fmt(Math.floor(dur));
+  }, 500);
+}
+function stopProg() { if (progTimer) clearInterval(progTimer); }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const bar = document.getElementById('progBar');
+  if (bar) bar.addEventListener('click', e => {
+    if (!ytReady) return;
+    ytPlayer.seekTo((e.clientX - bar.getBoundingClientRect().left) / bar.offsetWidth * ytPlayer.getDuration(), true);
+  });
+});
+
+// ── UI ────────────────────────────────────────────────
+function setUI(playing) {
+  isPlaying = playing;
+  document.getElementById('playBtn').textContent = playing ? '⏸' : '▶';
+  document.getElementById('albumArt').classList.toggle('spinning', playing);
+  document.getElementById('viz').classList.toggle('on', playing);
+}
+
+function renderQueue() {
+  const el = document.getElementById('queueList');
+  if (!el) return;
+  el.innerHTML = '';
+  queue.forEach((s, i) => {
+    const div = document.createElement('div');
+    div.className = 'queue-item'+(i===curIdx?' active':'');
+    div.innerHTML = `
+      <img src="https://img.youtube.com/vi/${s.youtubeId}/default.jpg" alt=""
+           onerror="this.src='https://via.placeholder.com/42x42/0f0f1e/7c3aed?text=🎵'">
+      <div style="overflow:hidden;flex:1;">
+        <div class="qi-title">${s.title}</div>
+        <div class="qi-artist">${s.artist}</div>
+      </div>
+      <div class="qi-dur">${fmt(s.duration)}</div>`;
+    div.addEventListener('click', () => loadSong(i, true));
+    el.appendChild(div);
+  });
+}
+
+// ── Lyrics ────────────────────────────────────────────
+const INSTR_A = ['ludovico einaudi','claude debussy','hans zimmer','yiruma','marconi union','lofi girl','erik satie','yann tiersen'];
+const INSTR_K = ['instrumental','lofi','lo-fi','theme','symphony','concerto','ost','soundtrack','radio'];
+
+async function fetchLyrics(artist, title) {
+  const box = document.getElementById('lyricsBox');
+  if (!box) return;
+  box.innerHTML = '<div class="lyrics-empty"><div>⏳</div><p>Fetching lyrics...</p></div>';
+  const aL = artist.toLowerCase(), tL = title.toLowerCase();
+  if (INSTR_A.some(a=>aL.includes(a)) || INSTR_K.some(k=>tL.includes(k))) {
+    box.innerHTML = `<div class="lyrics-empty"><div style="font-size:2.5rem">🎹</div><p style="color:#a78bfa;font-weight:700;">Instrumental Track</p><p style="font-size:.8rem;margin-top:.4rem;">No lyrics — enjoy the music 🎵</p></div>`;
+    return;
+  }
+  try {
+    const res  = await fetch(`http://localhost:8080/api/lyrics?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(title)}`);
+    const data = await res.json();
+    const raw  = data.lyrics||'';
+    if (!raw || raw.length<30 || raw.toLowerCase().includes('not available')) {
+      box.innerHTML = `<div class="lyrics-empty"><div>😔</div><p>Lyrics not found.</p><a href="https://genius.com/search?q=${encodeURIComponent(artist+' '+title)}" target="_blank" style="color:#7c3aed;font-size:.8rem;display:block;margin-top:.5rem;">Search on Genius →</a></div>`;
+      return;
+    }
+    const pre = document.createElement('div');
+    pre.className = 'lyrics-txt'; pre.textContent = raw;
+    box.innerHTML = ''; box.appendChild(pre);
+    localStorage.setItem('moodtunes_lyrics', raw);
+    localStorage.setItem('moodtunes_lyrics_song', JSON.stringify({artist,title}));
+  } catch {
+    box.innerHTML = '<div class="lyrics-empty"><div>⚠️</div><p>Could not fetch lyrics.</p></div>';
+  }
+}
+
+function openOverlay() { window.open('overlay.html','lyrics','width=380,height=600,resizable=yes,toolbar=no,menubar=no'); }
+function goAddPlaylist() { const s=queue[curIdx]; if(s) localStorage.setItem('moodtunes_add_song',JSON.stringify(s)); window.location.href='playlists.html'; }
+
+function fmt(s) { if(!s)return'0:00'; return`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`; }
+
+function showErr(msg) {
+  console.warn(msg);
+  const b = document.getElementById('errBox');
+  if (!b) return;
+  b.textContent = '⚠️ '+msg; b.style.display='block';
+  setTimeout(()=>b.style.display='none', 5000);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT') return;
+  if (e.code==='Space')      { e.preventDefault(); togglePlay(); }
+  if (e.code==='ArrowRight') { e.preventDefault(); nextSong(); }
+  if (e.code==='ArrowLeft')  { e.preventDefault(); prevSong(); }
+  if (e.code==='ArrowUp')    { const v=document.getElementById('volSlider'); v.value=Math.min(100,+v.value+10); setVol(v.value); }
+  if (e.code==='ArrowDown')  { const v=document.getElementById('volSlider'); v.value=Math.max(0,+v.value-10); setVol(v.value); }
+});

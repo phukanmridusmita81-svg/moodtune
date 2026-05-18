@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoodTunes — Discover</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    main { position:relative; z-index:1; }
+    .container { max-width:1200px; margin:0 auto; padding:2rem; }
+
+    /* Mood Wheel */
+    .mood-wheel {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 3rem;
+    }
+
+    .mood-wheel-item {
+      padding: 1.5rem 1rem;
+      border-radius: var(--radius-lg);
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      border: 2px solid transparent;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .mood-wheel-item::before {
+      content: '';
+      position: absolute; inset: 0;
+      opacity: 0.15;
+      transition: var(--transition);
+    }
+
+    .mood-wheel-item:hover { transform: translateY(-4px) scale(1.02); }
+    .mood-wheel-item:hover::before { opacity: 0.3; }
+    .mood-wheel-item.selected { border-color: currentColor; }
+
+    .mood-wheel-emoji { font-size: 2.5rem; margin-bottom: 0.5rem; }
+    .mood-wheel-label { font-weight: 800; font-size: 1rem; }
+    .mood-wheel-count { font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem; }
+
+    /* Genre Filter */
+    .genre-filter {
+      display: flex; gap: 0.5rem; flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+
+    .genre-tag {
+      padding: 0.4rem 1rem;
+      border-radius: 50px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 0.85rem; font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .genre-tag:hover, .genre-tag.active {
+      background: rgba(124,58,237,0.2);
+      border-color: var(--accent-purple);
+      color: var(--text-primary);
+    }
+
+    @media (max-width:600px) {
+      .mood-wheel { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="aurora"></div>
+  <nav class="navbar">
+    <div class="nav-logo">🎵 MoodTunes</div>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="player.html">Player</a></li>
+      <li><a href="discover.html">Discover</a></li>
+      <li><a href="playlists.html">Playlists</a></li>
+      <li><a href="overlay.html">Overlay</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="container">
+      <div style="padding:2rem 0;">
+        <h1 style="font-size:2.5rem; font-weight:800;">🔍 Discover</h1>
+        <p style="color:var(--text-secondary); margin-top:0.5rem;">Explore music by mood — click any mood to dive in</p>
+      </div>
+
+      <!-- Search Bar -->
+      <div style="display:flex; gap:0.75rem; margin-bottom:2rem;">
+        <input type="text" id="searchInput" placeholder="Search songs or artists..."
+          style="flex:1; background:var(--bg-card); border:1px solid var(--border);
+                 border-radius:50px; padding:0.75rem 1.5rem; color:var(--text-primary);
+                 font-family:'Syne',sans-serif; font-size:0.95rem; outline:none;"
+          oninput="handleSearch(this.value)">
+        <button class="btn btn-primary" onclick="handleSearch(document.getElementById('searchInput').value)">Search</button>
+      </div>
+
+      <!-- Mood Wheel -->
+      <div class="section-title">🎭 Mood Wheel</div>
+      <div class="mood-wheel" id="moodWheel"></div>
+
+      <!-- Genre Filter -->
+      <div class="genre-filter" id="genreFilter"></div>
+
+      <!-- Songs -->
+      <div class="section-title" id="songsTitle">🎵 All Songs</div>
+      <div class="songs-grid" id="songsGrid">
+        <div style="grid-column:1/-1; display:flex; justify-content:center; padding:3rem;">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+    <div style="height:80px;"></div>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    let selectedMood = localStorage.getItem('moodtunes_discover_mood') || null;
+    let currentSongs = [];
+
+    const genres = ['All', 'pop', 'bollywood-happy', 'bollywood-sad', 'hip-hop', 'edm', 'lofi', 'rock', 'classical', 'rnb', 'ambient', 'instrumental'];
+    let selectedGenre = 'All';
+
+    // Build mood wheel
+    const moodWheel = document.getElementById('moodWheel');
+    Object.entries(MOOD_META).forEach(([mood, meta]) => {
+      const item = document.createElement('div');
+      item.className = 'mood-wheel-item' + (selectedMood === mood ? ' selected' : '');
+      item.style.color = meta.color;
+      item.innerHTML = `
+        <div class="mood-wheel-emoji">${meta.emoji}</div>
+        <div class="mood-wheel-label">${mood}</div>
+      `;
+      item.style.background = meta.color + '15';
+      item.addEventListener('click', () => selectMood(mood, item));
+      moodWheel.appendChild(item);
+    });
+
+    // Build genre filter
+    const genreFilter = document.getElementById('genreFilter');
+    genres.forEach(g => {
+      const tag = document.createElement('div');
+      tag.className = 'genre-tag' + (g === selectedGenre ? ' active' : '');
+      tag.textContent = g;
+      tag.addEventListener('click', () => {
+        document.querySelectorAll('.genre-tag').forEach(t => t.classList.remove('active'));
+        tag.classList.add('active');
+        selectedGenre = g;
+        loadSongs();
+      });
+      genreFilter.appendChild(tag);
+    });
+
+    async function selectMood(mood, el) {
+      selectedMood = mood;
+      localStorage.setItem('moodtunes_discover_mood', mood);
+      document.querySelectorAll('.mood-wheel-item').forEach(i => i.classList.remove('selected'));
+      el.classList.add('selected');
+      await loadSongs();
+    }
+
+    async function loadSongs() {
+      const grid = document.getElementById('songsGrid');
+      const title = document.getElementById('songsTitle');
+      grid.innerHTML = '<div style="grid-column:1/-1;display:flex;justify-content:center;padding:3rem;"><div class="spinner"></div></div>';
+
+      let songs;
+      if (selectedMood) {
+        songs = await getSongsByMood(selectedMood);
+        title.textContent = `${MOOD_META[selectedMood]?.emoji || '🎵'} ${selectedMood} Songs`;
+      } else {
+        songs = await getTrendingSongs();
+        title.textContent = '🔥 Trending';
+      }
+
+      if (selectedGenre !== 'All') {
+        songs = songs.filter(s => s.genre === selectedGenre);
+      }
+
+      currentSongs = songs;
+      renderGrid(songs);
+    }
+
+    function renderGrid(songs) {
+      const grid = document.getElementById('songsGrid');
+      grid.innerHTML = '';
+      if (!songs.length) {
+        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:3rem; color:var(--text-muted);">No songs found for this combination 🎵</div>';
+        return;
+      }
+      songs.forEach((song, i) => {
+        const card = renderSongCard(song, (s) => playInPlayer(s, songs));
+        card.style.animationDelay = `${i * 0.04}s`;
+        grid.appendChild(card);
+      });
+    }
+
+    let searchTimeout;
+    function handleSearch(query) {
+      clearTimeout(searchTimeout);
+      if (!query.trim()) { loadSongs(); return; }
+      searchTimeout = setTimeout(async () => {
+        const res = await fetch(`http://localhost:8080/api/songs/search?q=${encodeURIComponent(query)}`);
+        const songs = await res.json();
+        document.getElementById('songsTitle').textContent = `🔍 Results for "${query}"`;
+        renderGrid(songs);
+      }, 400);
+    }
+
+    // Initial load
+    loadSongs();
+  </script>
+</body>
+</html>

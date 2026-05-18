@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoodTunes — Playlists</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    main { position:relative; z-index:1; }
+    .container { max-width:1200px; margin:0 auto; padding:2rem; }
+
+    .playlists-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+    }
+
+    .playlist-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      cursor: pointer;
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .playlist-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(124,58,237,0.4);
+    }
+
+    .playlist-cover {
+      width: 100%; aspect-ratio: 1;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 4rem;
+      margin-bottom: 1rem;
+    }
+
+    .playlist-name { font-weight: 800; font-size: 1.05rem; }
+    .playlist-meta { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem; }
+
+    /* Create Playlist Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(7,7,15,0.8);
+      backdrop-filter: blur(10px);
+      align-items: center; justify-content: center;
+    }
+
+    .modal-overlay.visible { display: flex; }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      width: 90%; max-width: 440px;
+    }
+
+    .modal input, .modal select {
+      width: 100%;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: var(--text-primary);
+      font-family: 'Syne', sans-serif;
+      font-size: 0.95rem;
+      outline: none;
+      margin: 0.5rem 0 1rem;
+    }
+
+    .modal select option { background: var(--bg-card); }
+
+    .song-list { margin-top: 1rem; }
+    .song-list-item {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.6rem; border-radius: 8px;
+      transition: var(--transition);
+    }
+    .song-list-item:hover { background: var(--bg-hover); }
+    .song-list-item img { width: 40px; height: 40px; border-radius: 6px; object-fit:cover; }
+  </style>
+</head>
+<body>
+  <div class="aurora"></div>
+  <nav class="navbar">
+    <div class="nav-logo">🎵 MoodTunes</div>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="player.html">Player</a></li>
+      <li><a href="discover.html">Discover</a></li>
+      <li><a href="playlists.html">Playlists</a></li>
+      <li><a href="overlay.html">Overlay</a></li>
+    </ul>
+  </nav>
+
+  <!-- Create Playlist Modal -->
+  <div class="modal-overlay" id="createModal">
+    <div class="modal">
+      <div style="font-size:1.3rem; font-weight:800; margin-bottom:1.5rem;">➕ Create Playlist</div>
+      <label>Playlist Name</label>
+      <input type="text" id="playlistName" placeholder="My Chill Vibes...">
+      <label>Mood</label>
+      <select id="playlistMood">
+        <option value="HAPPY">😊 Happy</option>
+        <option value="SAD">😢 Sad</option>
+        <option value="ENERGETIC">💪 Energetic</option>
+        <option value="CALM">😌 Calm</option>
+        <option value="ROMANTIC">❤️ Romantic</option>
+        <option value="ANGRY">😤 Angry</option>
+        <option value="FOCUS">🎯 Focus</option>
+      </select>
+      <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="handleCreate()">Create ✨</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Playlist Detail Modal -->
+  <div class="modal-overlay" id="detailModal">
+    <div class="modal" style="max-width:520px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <div id="detailTitle" style="font-size:1.3rem; font-weight:800;"></div>
+        <button class="btn btn-ghost" style="padding:0.3rem 0.8rem;" onclick="closeDetail()">✕</button>
+      </div>
+      <div id="detailSongs" class="song-list"></div>
+      <div style="margin-top:1rem; display:flex; gap:0.5rem;">
+        <button class="btn btn-primary" onclick="playPlaylist()" style="flex:1;">▶ Play All</button>
+        <button class="btn btn-ghost" onclick="deleteCurrentPlaylist()" style="color:#DC143C;">🗑 Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div class="container">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:2rem 0 1rem;">
+        <div>
+          <h1 style="font-size:2.5rem; font-weight:800;">🎵 My Playlists</h1>
+          <p style="color:var(--text-secondary);">Your mood-curated music collections</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateModal()">➕ New Playlist</button>
+      </div>
+
+      <!-- Mood Stats -->
+      <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;" id="moodStats"></div>
+
+      <div class="playlists-grid" id="playlistsGrid">
+        <div style="grid-column:1/-1; display:flex; justify-content:center; padding:3rem;">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+    <div style="height:80px;"></div>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    let playlists = [];
+    let currentPlaylist = null;
+
+    async function loadPlaylists() {
+      playlists = await getUserPlaylists();
+      renderPlaylists();
+      renderStats();
+    }
+
+    function renderPlaylists() {
+      const grid = document.getElementById('playlistsGrid');
+      grid.innerHTML = '';
+
+      if (!playlists.length) {
+        grid.innerHTML = `
+          <div style="grid-column:1/-1; text-align:center; padding:4rem; color:var(--text-muted);">
+            <div style="font-size:4rem; margin-bottom:1rem;">🎵</div>
+            <p>No playlists yet. Create your first mood playlist!</p>
+          </div>`;
+        return;
+      }
+
+      playlists.forEach(p => {
+        const meta = MOOD_META[p.mood] || MOOD_META.HAPPY;
+        const card = document.createElement('div');
+        card.className = 'playlist-card fade-up';
+        card.innerHTML = `
+          <div class="playlist-cover" style="background:${meta.color}20; color:${meta.color};">
+            ${meta.emoji}
+          </div>
+          <div class="playlist-name">${p.name}</div>
+          <div class="playlist-meta">
+            <span class="mood-badge" style="${getMoodBadgeStyle(p.mood)}">${meta.emoji} ${p.mood}</span>
+            <span style="margin-left:0.5rem;">${p.songs?.length || 0} songs</span>
+          </div>
+        `;
+        card.addEventListener('click', () => openDetail(p));
+        grid.appendChild(card);
+      });
+    }
+
+    async function renderStats() {
+      const res = await fetch('http://localhost:8080/api/mood/stats');
+      const stats = await res.json();
+      const el = document.getElementById('moodStats');
+      el.innerHTML = '';
+      Object.entries(stats).filter(([,v]) => v > 0).forEach(([mood, count]) => {
+        const meta = MOOD_META[mood] || MOOD_META.HAPPY;
+        const chip = document.createElement('div');
+        chip.style.cssText = `
+          padding: 0.5rem 1rem;
+          background: ${meta.color}15;
+          border: 1px solid ${meta.color}40;
+          border-radius: 50px;
+          color: ${meta.color};
+          font-weight: 700; font-size: 0.85rem;
+        `;
+        chip.textContent = `${meta.emoji} ${count} ${mood.toLowerCase()} detection${count !== 1 ? 's' : ''}`;
+        el.appendChild(chip);
+      });
+    }
+
+    function openCreateModal() {
+      document.getElementById('createModal').classList.add('visible');
+    }
+
+    function closeModal() {
+      document.getElementById('createModal').classList.remove('visible');
+    }
+
+    async function handleCreate() {
+      const name = document.getElementById('playlistName').value.trim();
+      const mood = document.getElementById('playlistMood').value;
+      if (!name) { showToast('Please enter a playlist name', 'error'); return; }
+
+      const playlist = await createPlaylist(name, mood);
+      playlists.push(playlist);
+
+      // Check if there's a song to add
+      const pendingSong = JSON.parse(localStorage.getItem('moodtunes_add_song') || 'null');
+      if (pendingSong && pendingSong.id) {
+        await addSongToPlaylist(playlist.id, pendingSong.id);
+        localStorage.removeItem('moodtunes_add_song');
+      }
+
+      renderPlaylists();
+      closeModal();
+      showToast('Playlist created! 🎉');
+    }
+
+    function openDetail(playlist) {
+      currentPlaylist = playlist;
+      document.getElementById('detailTitle').textContent = '🎵 ' + playlist.name;
+      const songsEl = document.getElementById('detailSongs');
+      songsEl.innerHTML = '';
+
+      if (!playlist.songs || !playlist.songs.length) {
+        songsEl.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:1rem;">No songs yet. Add songs from the player!</p>';
+      } else {
+        playlist.songs.forEach(song => {
+          const item = document.createElement('div');
+          item.className = 'song-list-item';
+          item.innerHTML = `
+            <img src="${song.thumbnailUrl || `https://img.youtube.com/vi/${song.youtubeId}/default.jpg`}" alt="">
+            <div style="flex:1; overflow:hidden;">
+              <div style="font-weight:700; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${song.title}</div>
+              <div style="color:var(--text-secondary); font-size:0.8rem;">${song.artist}</div>
+            </div>
+            <button onclick="removeSong(${playlist.id}, ${song.id})"
+              style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;" title="Remove">🗑</button>
+          `;
+          item.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'BUTTON') playInPlayer(song, playlist.songs);
+          });
+          songsEl.appendChild(item);
+        });
+      }
+
+      document.getElementById('detailModal').classList.add('visible');
+    }
+
+    function closeDetail() { document.getElementById('detailModal').classList.remove('visible'); }
+
+    function playPlaylist() {
+      if (currentPlaylist?.songs?.length) {
+        playInPlayer(currentPlaylist.songs[0], currentPlaylist.songs);
+      }
+    }
+
+    async function removeSong(playlistId, songId) {
+      await fetch(`http://localhost:8080/api/playlists/${playlistId}/songs/${songId}`, { method: 'DELETE' });
+      await loadPlaylists();
+      closeDetail();
+      showToast('Song removed');
+    }
+
+    async function deleteCurrentPlaylist() {
+      if (!currentPlaylist) return;
+      if (!confirm(`Delete "${currentPlaylist.name}"?`)) return;
+      await fetch(`http://localhost:8080/api/playlists/${currentPlaylist.id}`, { method: 'DELETE' });
+      await loadPlaylists();
+      closeDetail();
+      showToast('Playlist deleted');
+    }
+
+    loadPlaylists();
+  </script>
+</body>
+</html>
