@@ -3,7 +3,7 @@
 // Audio plays via backend proxy → no CORS issues
 // No YouTube iframe — clean player only
 
-const BACKEND = 'http://localhost:8082';
+const BACKEND = 'https://moodtune-backend-b76r.onrender.com';
 const audio   = document.getElementById('audioEl');
 const QUEUE_VERSION = 'hindi-jiosaavn-v1';
 

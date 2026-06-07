@@ -1,5 +1,5 @@
 // ─── Config ────────────────────────────────────────────────────────────────
-const API_BASE = 'http://localhost:8082/api';
+const API_BASE = 'https://moodtune-backend-b76r.onrender.com/api';
 const YT_API_KEY = 'AIzaSyDonSHnYCo1suXuKMTdHYwMb0h5tF-LlCQ';
 
 // ─── Session ID (per user) ─────────────────────────────────────────────────
