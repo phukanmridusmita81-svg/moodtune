@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoodTunes — Player</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono&display=swap" rel="stylesheet">
+  <style>
+    body { overflow: hidden; }
+    .player-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr 300px;
+      height: calc(100vh - 64px);
+      position: relative; z-index: 1;
+    }
+    .queue-panel { background:#0a0a18; border-right:1px solid rgba(255,255,255,.07); overflow-y:auto; padding:1rem; }
+    .queue-label { font-size:.75rem; font-weight:800; color:#9090b0; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:.75rem; }
+    .queue-item { display:flex; align-items:center; gap:.65rem; padding:.6rem .5rem; border-radius:8px; cursor:pointer; transition:all .2s; }
+    .queue-item:hover  { background:#181830; }
+    .queue-item.active { background:rgba(124,58,237,.18); }
+    .queue-item.active .qi-title { color:#a78bfa; }
+    .queue-item img { width:42px; height:42px; border-radius:6px; object-fit:cover; flex-shrink:0; }
+    .qi-title  { font-size:.82rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px; }
+    .qi-artist { font-size:.72rem; color:#9090b0; }
+    .qi-dur    { font-size:.7rem; color:#4a4a6a; margin-left:auto; flex-shrink:0; }
+    .center-panel { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1.5rem 2rem; gap:1.25rem; overflow-y:auto; background:#07070f; }
+    .album-wrap { position:relative; width:clamp(180px,28vw,280px); aspect-ratio:1; flex-shrink:0; }
+    .album-art  { width:100%; height:100%; border-radius:20px; object-fit:cover; box-shadow:0 20px 60px rgba(124,58,237,.4); transition:all .4s ease; }
+    .album-art.spin { animation:albumSpin 18s linear infinite; border-radius:50%; }
+    @keyframes albumSpin { to { transform:rotate(360deg); } }
+    .load-overlay { position:absolute; inset:0; background:rgba(7,7,15,.85); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.5rem; border-radius:20px; transition:opacity .3s; }
+    .load-overlay.hide { opacity:0; pointer-events:none; }
+    .spin-ring { width:32px; height:32px; border:3px solid #181830; border-top-color:#7c3aed; border-radius:50%; animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .load-txt { font-size:.75rem; color:#9090b0; }
+    .src-badge { display:none; align-items:center; gap:.4rem; padding:.35rem 1rem; border-radius:50px; background:rgba(124,58,237,.15); border:1px solid rgba(124,58,237,.35); color:#a78bfa; font-size:.78rem; font-weight:700; }
+    .viz { display:flex; gap:3px; height:28px; align-items:flex-end; opacity:0; transition:opacity .4s; }
+    .viz.on { opacity:1; }
+    .vb { width:4px; background:linear-gradient(to top,#7c3aed,#06b6d4); border-radius:3px; animation:vb .5s ease-in-out infinite alternate; }
+    @keyframes vb { from{height:4px} to{height:100%} }
+    .song-name { font-size:1.4rem; font-weight:800; text-align:center; max-width:420px; }
+    .song-by   { color:#9090b0; font-size:.9rem; text-align:center; }
+    .prog-area { width:100%; max-width:460px; }
+    .prog-bar  { width:100%; height:5px; background:#181830; border-radius:3px; cursor:pointer; position:relative; }
+    .prog-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#7c3aed,#06b6d4); position:relative; transition:width .1s linear; pointer-events:none; }
+    .prog-fill::after { content:''; position:absolute; right:-7px; top:-5px; width:15px; height:15px; background:#fff; border-radius:50%; box-shadow:0 0 8px rgba(124,58,237,.8); }
+    .time-row { display:flex; justify-content:space-between; font-size:.78rem; color:#4a4a6a; margin-top:.4rem; }
+    .controls { display:flex; align-items:center; gap:1.25rem; }
+    .cb { background:none; border:none; color:#9090b0; font-size:1.3rem; cursor:pointer; transition:all .2s; padding:.4rem; border-radius:8px; }
+    .cb:hover { color:#f1f1f8; transform:scale(1.1); }
+    .cb.on { color:#a78bfa; }
+    .play-btn { width:60px; height:60px; background:linear-gradient(135deg,#7c3aed,#06b6d4); border:none; border-radius:50%; color:white; font-size:1.5rem; cursor:pointer; transition:all .2s; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 24px rgba(124,58,237,.6); }
+    .play-btn:hover { transform:scale(1.07); }
+    .vol-row { display:flex; align-items:center; gap:.75rem; width:100%; max-width:460px; }
+    .vol-slider { flex:1; appearance:none; height:4px; border-radius:2px; background:#181830; outline:none; cursor:pointer; }
+    .vol-slider::-webkit-slider-thumb { appearance:none; width:13px; height:13px; border-radius:50%; background:#7c3aed; cursor:pointer; }
+    .mbadge { display:inline-flex; align-items:center; gap:.3rem; padding:.25rem .75rem; border-radius:50px; font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
+    .xbtn { padding:.35rem .85rem; background:transparent; border:1px solid rgba(255,255,255,.08); border-radius:50px; color:#9090b0; font-family:'Syne',sans-serif; font-size:.78rem; font-weight:700; cursor:pointer; transition:all .2s; }
+    .xbtn:hover { color:#f1f1f8; border-color:#7c3aed; background:rgba(124,58,237,.12); }
+    .lyrics-panel { background:#0a0a18; border-left:1px solid rgba(255,255,255,.07); padding:1.25rem; overflow-y:auto; display:flex; flex-direction:column; gap:.75rem; }
+    .lyrics-hdr { font-size:.75rem; font-weight:800; color:#9090b0; text-transform:uppercase; letter-spacing:1.5px; }
+    .lyrics-txt { font-family:'Space Mono',monospace; font-size:.82rem; line-height:1.85; color:#7070a0; white-space:pre-wrap; }
+    .lyrics-empty { display:flex; flex-direction:column; align-items:center; gap:.75rem; padding:2rem 1rem; text-align:center; color:#4a4a6a; }
+    #toast { display:none; position:fixed; bottom:24px; right:24px; z-index:999; background:linear-gradient(135deg,#7c3aed,#06b6d4); color:white; padding:.6rem 1.4rem; border-radius:50px; font-weight:700; font-size:.88rem; box-shadow:0 8px 24px rgba(124,58,237,.5); max-width:320px; }
+    @media(max-width:900px) { .player-layout{grid-template-columns:1fr;} .queue-panel,.lyrics-panel{display:none;} }
+  </style>
+</head>
+<body>
+<div class="aurora"></div>
+<div id="toast"></div>
+<audio id="audioEl" preload="auto"></audio>
+<nav class="navbar">
+  <div class="nav-logo">🎵 MoodTunes</div>
+  <ul class="nav-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="player.html" class="active">Player</a></li>
+    <li><a href="discover.html">Discover</a></li>
+    <li><a href="playlists.html">Playlists</a></li>
+    <li><a href="overlay.html">Overlay</a></li>
+  </ul>
+</nav>
+<div class="player-layout">
+  <div class="queue-panel">
+    <div class="queue-label">⏭ Queue</div>
+    <div id="queueList"></div>
+  </div>
+  <div class="center-panel">
+    <div class="album-wrap">
+      <img class="album-art" id="albumArt" src="https://via.placeholder.com/280x280/0f0f1e/7c3aed?text=🎵" alt="cover">
+      <div class="load-overlay" id="loadOverlay">
+        <div class="spin-ring"></div>
+        <div class="load-txt">Finding song...</div>
+      </div>
+    </div>
+    <div class="src-badge" id="srcBadge">🎵 JioSaavn &nbsp;|&nbsp; Full Song</div>
+    <div class="viz" id="viz">
+      <div class="vb" style="animation-duration:.4s"></div>
+      <div class="vb" style="animation-duration:.6s;animation-delay:.1s"></div>
+      <div class="vb" style="animation-duration:.5s;animation-delay:.05s"></div>
+      <div class="vb" style="animation-duration:.7s;animation-delay:.2s"></div>
+      <div class="vb" style="animation-duration:.45s;animation-delay:.15s"></div>
+      <div class="vb" style="animation-duration:.55s;animation-delay:.08s"></div>
+      <div class="vb" style="animation-duration:.5s;animation-delay:.12s"></div>
+    </div>
+    <div>
+      <div class="song-name" id="songTitle">Loading songs...</div>
+      <div class="song-by"   id="songArtist">—</div>
+      <div style="text-align:center;margin-top:.5rem;" id="moodBadge"></div>
+    </div>
+    <div class="prog-area">
+      <div class="prog-bar" id="progBar">
+        <div class="prog-fill" id="progFill" style="width:0%"></div>
+      </div>
+      <div class="time-row">
+        <span id="curTime">0:00</span>
+        <span id="totTime">0:00</span>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="cb" id="shuffleBtn" onclick="toggleShuffle()" title="Shuffle">🔀</button>
+      <button class="cb" onclick="prevSong()" title="Previous">⏮</button>
+      <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
+      <button class="cb" onclick="nextSong()" title="Next">⏭</button>
+      <button class="cb" id="repeatBtn" onclick="toggleRepeat()" title="Repeat">🔁</button>
+    </div>
+    <div class="vol-row">
+      <span>🔈</span>
+      <input class="vol-slider" type="range" id="volSlider" min="0" max="1" step="0.01" value="0.8" oninput="setVol(this.value)">
+      <span>🔊</span>
+      <button class="xbtn" onclick="openOverlay()">📝 Overlay</button>
+      <button class="xbtn" onclick="goAddPlaylist()">➕ Playlist</button>
+    </div>
+  </div>
+  <div class="lyrics-panel">
+    <div class="lyrics-hdr">📝 Lyrics</div>
+    <div id="lyricsBox">
+      <div class="lyrics-empty">
+        <div style="font-size:2.5rem">🎵</div>
+        <p>Play a song to see lyrics</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="js/app.js"></script>
+<script src="js/player.js"></script>
+</body>
+</html>

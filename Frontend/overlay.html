@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MoodTunes Lyrics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital@0;1&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Space Mono', monospace;
+      background: rgba(7,7,15,0.92);
+      color: #f1f1f8;
+      min-height: 100vh;
+      padding: 1rem;
+      overflow-x: hidden;
+    }
+
+    .overlay-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 1rem;
+    }
+
+    .overlay-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800; font-size: 1rem;
+      background: linear-gradient(135deg, #7c3aed, #06b6d4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .overlay-song { font-size: 0.85rem; color: #9090b0; margin-top: 0.25rem; }
+
+    .lyrics-box {
+      font-size: 0.85rem;
+      line-height: 1.9;
+      color: #9090b0;
+      white-space: pre-wrap;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #7c3aed transparent;
+    }
+
+    .opacity-control {
+      position: fixed; bottom: 0.75rem; right: 0.75rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .opacity-control input {
+      width: 80px; appearance: none;
+      height: 3px; background: rgba(255,255,255,0.2);
+      border-radius: 2px; outline: none; cursor: pointer;
+    }
+
+    .opacity-control input::-webkit-slider-thumb {
+      appearance: none; width: 12px; height: 12px;
+      border-radius: 50%; background: #7c3aed; cursor: pointer;
+    }
+
+    .no-lyrics {
+      text-align: center; padding: 3rem 1rem;
+      color: #4a4a6a;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: #7c3aed; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div class="overlay-header">
+    <div>
+      <div class="overlay-title">🎵 MoodTunes Lyrics</div>
+      <div class="overlay-song" id="songInfo">No song playing</div>
+    </div>
+    <div style="font-size:0.75rem; color:#4a4a6a;">📌 Pin this window</div>
+  </div>
+
+  <div class="lyrics-box" id="lyricsBox">
+    <div class="no-lyrics">
+      <div style="font-size:3rem; margin-bottom:0.5rem;">🎵</div>
+      <p>Open the MoodTunes player and play a song to see lyrics here in real-time.</p>
+    </div>
+  </div>
+
+  <div class="opacity-control">
+    <span style="font-size:0.75rem; color:#4a4a6a;">Opacity</span>
+    <input type="range" min="30" max="100" value="92"
+      oninput="document.body.style.background = `rgba(7,7,15,${this.value/100})`">
+  </div>
+
+  <script>
+    function loadLyrics() {
+      const lyrics = localStorage.getItem('moodtunes_lyrics');
+      const songData = JSON.parse(localStorage.getItem('moodtunes_lyrics_song') || '{}');
+
+      if (songData.title) {
+        document.getElementById('songInfo').textContent = `${songData.title} — ${songData.artist}`;
+      }
+
+      if (lyrics) {
+        document.getElementById('lyricsBox').textContent = lyrics;
+      }
+    }
+
+    loadLyrics();
+    // Auto-refresh every 2 seconds
+    setInterval(loadLyrics, 2000);
+  </script>
+</body>
+</html>
